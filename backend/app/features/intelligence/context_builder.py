@@ -165,13 +165,9 @@ class AIContextBuilder:
 
         # Verify safety
         if not self.filter.is_safe_for_ai(merchant):
-            raise ValueError(
-                f"Merchant contains unredactable sensitive patterns: {transaction.merchant}"
-            )
+            raise ValueError("Merchant contains unredactable sensitive patterns")
         if not self.filter.is_safe_for_ai(description):
-            raise ValueError(
-                f"Description contains unredactable sensitive patterns: {transaction.description}"
-            )
+            raise ValueError("Description contains unredactable sensitive patterns")
 
         # Build minimal context
         context = SanitizedContext(
@@ -202,9 +198,7 @@ class AIContextBuilder:
         description = self.filter.sanitize_description(transaction.description)
 
         if not self.filter.is_safe_for_ai(merchant):
-            raise ValueError(
-                f"Merchant contains unredactable sensitive patterns: {transaction.merchant}"
-            )
+            raise ValueError("Merchant contains unredactable sensitive patterns")
 
         context = SanitizedContext(
             merchant=merchant,
@@ -303,7 +297,7 @@ class AIContextBuilder:
         for value in context.values():
             if isinstance(value, str):
                 if not self.filter.is_safe_for_ai(value):
-                    raise ValueError(f"Context contains sensitive patterns: {value}")
+                    raise ValueError("Context contains sensitive patterns in string field")
             elif isinstance(value, dict):
                 if not self.validate_context_safety(value):
                     return False

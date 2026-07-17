@@ -36,6 +36,8 @@ Future PDF import must sandbox parsing, limit file size/page count, avoid execut
 
 Apply per-user and per-IP limits for auth-sensitive endpoints, AI endpoints, imports, and search. AI endpoints need stricter quotas.
 
+The current repository contains no HTTP endpoints or authenticated request context, so rate limiting is deliberately not implemented in the domain layer. The API host must enforce these limits with a shared, durable rate-limit store before production exposure.
+
 ## Encryption
 
 - In transit: HTTPS.
@@ -58,3 +60,7 @@ Log security-relevant events: login bootstrap, import completion, privacy mode c
 ## Secure Storage
 
 Secure Storage contains access tokens, refresh tokens, device ID, and archive keys. Hive must not contain secrets.
+
+## Release Operations
+
+The SQLite adapter is a local development/single-device adapter, not a managed production database. A production deployment must have encrypted backups, restore drills, RLS verification, a privacy-safe telemetry sink, and an incident response owner. See [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) for the release gates and export boundaries.

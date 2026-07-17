@@ -31,7 +31,8 @@ Detect and redact:
 
 - Replace sensitive values with typed placeholders such as `[ACCOUNT_REDACTED]`.
 - Remove statement header/footer rows before transaction normalization.
-- Store `sanitized_description` separately from parser input.
+- Store only `sanitized_description` and sanitized notes; parser input and raw row payloads are transient.
+- Use bank reference IDs only to form a one-way deduplication key. Do not persist them.
 - Reject AI context generation if sensitive patterns remain.
 - Do not store raw row payloads in durable storage.
 
@@ -67,6 +68,10 @@ Mitigations:
 - RLS and backend user scoping.
 - Structured logs with redaction.
 - Minimal retention of sensitive source data.
+
+## Phase 5 Release Boundary
+
+The checked-in Python package has no HTTP transport, authentication provider, or telemetry exporter. Release deployments must supply authenticated access control, RLS, rate limiting, telemetry retention, and secure key storage as described in [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md). These controls cannot be verified in this domain-only repository.
 
 ## Security Assumptions
 

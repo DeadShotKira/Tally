@@ -1,4 +1,11 @@
+"""Repository interfaces and in-memory implementation for transaction and metadata storage.
+
+Defines persistence contracts for transactions, merchants, categories, and tags,
+as well as the in-memory implementations used for testing and fast local execution.
+"""
+
 from __future__ import annotations
+
 
 from abc import ABC, abstractmethod
 from dataclasses import replace

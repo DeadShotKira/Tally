@@ -21,8 +21,9 @@ import re
 from dataclasses import dataclass
 from decimal import Decimal
 from enum import Enum
+from datetime import UTC, datetime
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from backend.app.features.intelligence.models import Rule
 from backend.app.features.transactions.models import Transaction
@@ -189,6 +190,7 @@ class RuleEvaluator:
         elif rule_type == RuleType.COMBINED:
             return self._match_combined(rule, transaction)
 
+        # Unsupported or unknown rule types fall through and return False
         return False
 
 
@@ -286,9 +288,6 @@ class RuleEngine:
         Returns:
             Rule instance
         """
-        from uuid import uuid4
-        from datetime import UTC, datetime
-
         return Rule(
             id=uuid4(),
             user_id=user_id,
@@ -323,9 +322,6 @@ class RuleEngine:
         Returns:
             Rule instance
         """
-        from uuid import uuid4
-        from datetime import UTC, datetime
-
         return Rule(
             id=uuid4(),
             user_id=user_id,

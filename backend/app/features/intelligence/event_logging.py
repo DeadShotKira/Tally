@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 def log_rule_match(rule_id: UUID, rule_name: str, transaction_id: UUID):
     """Log when a rule matches a transaction."""
     logger.info(
-        f"Rule matched",
+        "Rule matched",
         extra={
             "rule_id": str(rule_id),
             "rule_name": rule_name,
@@ -29,7 +29,7 @@ def log_ai_request(
 ):
     """Log AI request (without sensitive data)."""
     logger.info(
-        f"AI request initiated",
+        "AI request initiated",
         extra={
             "user_id": str(user_id),
             "request_type": request_type,
@@ -43,7 +43,7 @@ def log_ai_request(
 def log_cache_hit(request_type: str, user_id: UUID):
     """Log cache hit."""
     logger.debug(
-        f"Cache hit",
+        "Cache hit",
         extra={
             "request_type": request_type,
             "user_id": str(user_id),
@@ -57,12 +57,10 @@ def log_merchant_memory_applied(
     merchant_canonical: str,
     transaction_id: UUID,
 ):
-    """Log when merchant memory is applied."""
-    logger.info(
-        f"Merchant memory applied",
+    """Log a merchant-memory event without exposing merchant strings."""
+    logger.debug(
+        "Merchant memory applied",
         extra={
-            "merchant_raw": merchant_raw,
-            "merchant_canonical": merchant_canonical,
             "transaction_id": str(transaction_id),
             "event": "memory_applied",
         },
@@ -77,7 +75,7 @@ def log_categorization(
 ):
     """Log transaction categorization."""
     logger.info(
-        f"Transaction categorized",
+        "Transaction categorized",
         extra={
             "transaction_id": str(transaction_id),
             "category": category,
@@ -94,10 +92,9 @@ def log_privacy_violation_prevented(
 ):
     """Log when privacy violation is prevented."""
     logger.warning(
-        f"Privacy violation prevented",
+        "Privacy violation prevented",
         extra={
             "violation_type": violation_type,
-            "details": details,
             "event": "privacy_violation_prevented",
         },
     )

@@ -1,3 +1,10 @@
+"""Bank format detection for CSV statement imports.
+
+The detector scores each registered :class:`BankProfile` against the CSV
+headers and text markers, returning the best match above a 0.70 confidence
+threshold.  When no profile matches, a generic CSV fallback is attempted.
+"""
+
 from __future__ import annotations
 
 import csv

@@ -10,7 +10,7 @@ import hashlib
 import json
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from typing import Any
 from uuid import UUID
 
@@ -81,11 +81,19 @@ class AICache:
         Returns:
             SHA256 hash of context
         """
-        # Create canonical representation
+        # Create canonical representation. Rounding to the nearest 10 groups similar small amounts
+        # together to improve cache hit rates for matching transactions with minor price differences.
+        try:
+            # Safely quantize Decimal to nearest 10 using ROUND_HALF_UP
+            rounded_amount = context.amount.quantize(Decimal("10"), rounding=ROUND_HALF_UP)
+        except Exception:
+            # Fallback to standard round() if quantization fails or context.amount is not Decimal
+            rounded_amount = round(context.amount, -1)
+
         data = {
             "merchant": context.merchant.lower().strip(),
             "description": context.description.lower().strip(),
-            "amount_rounded": str(round(context.amount, -1)),  # Round to nearest 10
+            "amount_rounded": str(rounded_amount),
             "direction": context.direction,
         }
 
@@ -274,12 +282,20 @@ class AICache:
         return len(expired_keys)
 
     def _evict_oldest(self) -> None:
-        """Evict oldest entry when cache is full."""
-        if not self.cache:
-            return
+        """Evict oldest entry when cache is full.
 
-        oldest_key = min(self.cache.keys(), key=lambda k: self.cache[k].created_at)
-        del self.cache[oldest_key]
+        Attempts to clean up expired entries first to free space.
+        If the cache remains full, evicts the oldest entry by creation date.
+        """
+        # First, try to free space by clearing expired entries
+        self.cleanup_expired()
+
+        # If cache is still at or above capacity, perform eviction
+        if len(self.cache) >= self.max_entries:
+            if not self.cache:
+                return
+            oldest_key = min(self.cache.keys(), key=lambda k: self.cache[k].created_at)
+            del self.cache[oldest_key]
 
     def get_stats(self) -> dict[str, Any]:
         """Get cache statistics.

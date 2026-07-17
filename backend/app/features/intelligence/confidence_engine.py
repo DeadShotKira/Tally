@@ -18,6 +18,9 @@ from backend.app.features.intelligence.models import (
     ConfidenceLevel,
 )
 
+MIN_VIABLE_CONFIDENCE = 0.40
+
+
 
 @dataclass(frozen=True)
 class ConfidenceThresholds:
@@ -108,7 +111,7 @@ class ConfidenceEngine:
         if level is None:
             level = self.calculate_confidence_level(score)
 
-        return score < 0.40  # Arbitrary low threshold
+        return score < MIN_VIABLE_CONFIDENCE  # Arbitrary low threshold
 
     def adjust_category_suggestion(
         self,

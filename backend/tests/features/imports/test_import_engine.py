@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+import sqlite3
 from contextlib import closing
 from pathlib import Path
 from uuid import uuid4
@@ -133,10 +134,31 @@ class ImportEngineTestCase(unittest.TestCase):
         import sqlite3
 
         with closing(sqlite3.connect(db_path)) as conn:
-            rows = conn.execute("select description, sanitized_description from transactions").fetchall()
-        combined = " ".join(" ".join(row) for row in rows)
+            rows = conn.execute(
+                "select description, sanitized_description, reference_number from transactions"
+            ).fetchall()
+        combined = " ".join(" ".join(value or "" for value in row) for row in rows)
         self.assertNotIn("9876543210", combined)
         self.assertNotIn("HDFC0001234", combined)
+        self.assertNotIn("HDF001", combined)
+
+    def test_notes_are_sanitized_and_reference_ids_are_not_persisted(self) -> None:
+        source = self._write_csv(
+            "with_notes.csv",
+            "Date,Description,Amount,Type,Reference,Notes\n"
+            "2026-06-01,Coffee,-120,debit,REF-998877,Call +91 9876543210\n",
+        )
+        db_path = self.root / "tally.db"
+        repository = SQLiteImportRepository(db_path)
+        service = build_default_import_service(repository, self.file_manager)
+
+        summary = service.import_csv(ImportRequest(user_id=self.user_id, source_path=source))
+
+        self.assertEqual(summary.status, ImportStatus.COMPLETED)
+        with closing(sqlite3.connect(db_path)) as conn:
+            row = conn.execute("select reference_number, notes from transactions").fetchone()
+        self.assertIsNone(row[0])
+        self.assertEqual(row[1], "Call [PHONE_REDACTED]")
 
 
 class ComponentTestCase(unittest.TestCase):

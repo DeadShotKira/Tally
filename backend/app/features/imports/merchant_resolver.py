@@ -1,3 +1,13 @@
+"""Heuristic merchant name resolver for the imports pipeline.
+
+Strips payment-mode noise words (UPI, NEFT, IMPS, …) and numeric tokens
+from a sanitized transaction description, then title-cases the first four
+remaining tokens to produce a human-readable merchant name.
+
+This is a fast, deterministic fallback.  The Intelligence Layer's
+:class:`MerchantMemoryEngine` and AI providers improve on this later.
+"""
+
 from __future__ import annotations
 
 import re

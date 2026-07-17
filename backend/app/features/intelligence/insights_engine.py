@@ -335,7 +335,7 @@ class InsightsEngine:
             return insights
 
         avg_amount = sum(amounts) / len(amounts)
-        threshold = avg_amount * 2.5
+        threshold = avg_amount * Decimal("2.5")
 
         large_expenses = [
             t for t in transactions

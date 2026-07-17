@@ -1,3 +1,14 @@
+"""Transaction row normalizer for the imports pipeline.
+
+Converts raw :class:`ParsedTransactionRow` values into typed
+:class:`NormalizedCandidate` objects, handling:
+
+* Date parsing across six common Indian bank date formats
+* Debit/credit column disambiguation
+* Decimal parsing with INR/Rs. prefix and parenthesised-negative support
+* Deterministic dedupe key generation (SHA-256)
+"""
+
 from __future__ import annotations
 
 import hashlib
@@ -9,9 +20,22 @@ from .models import NormalizedCandidate, ParsedTransactionRow, TransactionDirect
 
 
 class TransactionNormalizer:
+    """Convert parsed CSV rows into typed, validated candidates."""
+
+    #: Date formats tried in order; first match wins.
     DATE_FORMATS = ("%Y-%m-%d", "%d-%m-%Y", "%d/%m/%Y", "%d/%m/%y", "%d %b %Y", "%d-%b-%Y")
 
     def normalize(self, row: ParsedTransactionRow) -> tuple[NormalizedCandidate | None, tuple[ValidationIssue, ...]]:
+        """Normalize a single parsed row into a typed candidate.
+
+        Args:
+            row: Raw parsed row from the CSV parser.
+
+        Returns:
+            A 2-tuple of ``(candidate, errors)``.  *candidate* is ``None``
+            when any critical field (date, description, amount) cannot be
+            parsed; *errors* lists the validation issues found.
+        """
         errors: list[ValidationIssue] = []
         parsed_date = self._parse_date(row.raw_date)
         if parsed_date is None:
@@ -47,6 +71,20 @@ class TransactionNormalizer:
         )
 
     def dedupe_key_for(self, candidate: NormalizedCandidate, sanitized_description: str) -> str:
+        """Return a stable SHA-256 key for deduplication.
+
+        The key is derived from date, amount, direction, the *sanitized*
+        description (lower-cased), balance, and reference number so that the
+        same logical transaction always hashes to the same key regardless of
+        import timing.
+
+        Args:
+            candidate: Normalized transaction candidate.
+            sanitized_description: Privacy-filtered description text.
+
+        Returns:
+            64-character lowercase hex digest.
+        """
         basis = "|".join(
             [
                 candidate.date.isoformat(),
@@ -95,6 +133,10 @@ class TransactionNormalizer:
         if value is None or not value.strip():
             return None
         cleaned = value.strip().replace(",", "")
+        # Strip leading currency prefixes like "Rs.", "Rs", "INR", "Cr", "Dr"
+        # Use a more permissive pattern that handles "Rs. 1234" (period + space)
+        cleaned = re.sub(r"(?i)^(inr|rs\.?|cr|dr)\s*", "", cleaned).strip()
+        # Also strip from anywhere in the string (fallback for mid-string prefixes)
         cleaned = re.sub(r"(?i)\b(inr|rs\.?|cr|dr)\b", "", cleaned).strip()
         if cleaned.startswith("(") and cleaned.endswith(")"):
             cleaned = "-" + cleaned[1:-1]

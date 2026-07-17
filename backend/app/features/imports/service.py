@@ -1,3 +1,15 @@
+"""Top-level CSV import service and factory for the imports pipeline.
+
+Orchestrates the full import flow:
+file staging → bank detection → parsing → normalization → validation →
+privacy sanitization → merchant resolution → deduplication → persistence →
+file lifecycle management.
+
+Entry point: :class:`ImportService.import_csv`.  Use
+:func:`build_default_import_service` to create a wired-up instance with
+default component implementations.
+"""
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -173,10 +185,16 @@ class ImportService:
                 privacy_actions=tuple(privacy_actions),
                 processing_duration_ms=self._duration_ms(started),
                 user_message=exc.user_message,
-                technical_details={"code": exc.code, "detail": exc.technical_detail},
+                # Technical details can include file-system or parser data.  Keep
+                # the public result stable and privacy-safe; diagnostics belong in
+                # a protected telemetry sink.
+                technical_details={"code": exc.code},
             )
 
-    def _normalize_rows(self, rows) -> tuple[list[NormalizedCandidate], tuple[ValidationIssue, ...]]:
+    def _normalize_rows(
+        self,
+        rows: tuple,
+    ) -> tuple[list[NormalizedCandidate], tuple[ValidationIssue, ...]]:
         candidates: list[NormalizedCandidate] = []
         errors: list[ValidationIssue] = []
         for row in rows:
@@ -188,29 +206,40 @@ class ImportService:
         return candidates, tuple(errors)
 
     def _build_transactions(
-        self, user_id, import_id, candidates: tuple[NormalizedCandidate, ...]
+        self,
+        user_id: "UUID",
+        import_id: "UUID",
+        candidates: tuple[NormalizedCandidate, ...],
     ) -> tuple[NormalizedTransaction, ...]:
         transactions: list[NormalizedTransaction] = []
         now = datetime.now(UTC)
         for candidate in candidates:
             privacy = self.privacy_engine.sanitize_description(candidate.description)
-            dedupe_key = self.normalizer.dedupe_key_for(candidate, privacy.sanitized_description)
-            merchant = self.merchant_resolver.resolve(privacy.sanitized_description)
+            description = privacy.sanitized_description
+            self.privacy_engine.assert_safe_for_storage(description)
+            notes = None
+            if candidate.notes:
+                notes = self.privacy_engine.sanitize_description(candidate.notes).sanitized_description
+                self.privacy_engine.assert_safe_for_storage(notes)
+            dedupe_key = self.normalizer.dedupe_key_for(candidate, description)
+            merchant = self.merchant_resolver.resolve(description)
             transactions.append(
                 NormalizedTransaction(
                     id=uuid4(),
                     user_id=user_id,
                     import_id=import_id,
                     date=candidate.date,
-                    description=privacy.sanitized_description,
-                    sanitized_description=privacy.sanitized_description,
+                    description=description,
+                    sanitized_description=description,
                     amount=candidate.amount,
                     direction=candidate.direction,
                     balance=candidate.balance,
                     merchant=merchant,
                     category=None,
-                    reference_number=candidate.reference_number,
-                    notes=candidate.notes,
+                    # Bank reference IDs are not needed after deduplication and
+                    # can act as identifiers, so they are intentionally not stored.
+                    reference_number=None,
+                    notes=notes,
                     tags=(),
                     dedupe_key=dedupe_key,
                     created_at=now,

@@ -1,3 +1,17 @@
+"""Duplicate detection for the CSV import pipeline.
+
+Provides two-tier deduplication:
+
+1. **File-level**: a SHA-256 hash of the entire CSV file is compared against
+   previously imported hashes.  If the file has been imported before, the
+   import is short-circuited immediately.
+
+2. **Row-level**: each normalised transaction has a deterministic
+   ``dedupe_key`` (SHA-256 of date, amount, direction, sanitized description,
+   balance, and reference).  Rows whose keys already exist in the database are
+   silently skipped.
+"""
+
 from __future__ import annotations
 
 from collections.abc import Iterable

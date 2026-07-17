@@ -1,3 +1,13 @@
+"""Post-normalization validation for transaction candidates.
+
+Applies business-rule checks to :class:`NormalizedCandidate` objects *after*
+parsing and normalization.  Errors from this stage indicate rows that pass
+parsing but violate business constraints (zero amount, absurd balance, etc.).
+
+This is intentionally separate from the parser so each concern can be tested
+and changed independently.
+"""
+
 from __future__ import annotations
 
 from decimal import Decimal
@@ -6,7 +16,19 @@ from .models import NormalizedCandidate, ValidationIssue, ValidationReport
 
 
 class TransactionValidator:
+    """Validate a batch of normalized candidates and return warnings/errors."""
+
     def validate_candidates(self, candidates: tuple[NormalizedCandidate, ...]) -> ValidationReport:
+        """Run all validation rules against *candidates*.
+
+        Args:
+            candidates: Tuple of normalized transaction candidates.
+
+        Returns:
+            :class:`ValidationReport` containing any warnings and errors.
+            Warnings do not block import; errors should prevent the row from
+            being persisted.
+        """
         warnings: list[ValidationIssue] = []
         errors: list[ValidationIssue] = []
         seen_rows: set[tuple[str, str, str, str]] = set()

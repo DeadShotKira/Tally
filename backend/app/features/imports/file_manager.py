@@ -1,10 +1,17 @@
+"""Temporary file management for CSV statement imports.
+
+Handles staging uploaded CSVs in a controlled temp directory,
+computing SHA-256 checksums, encrypting archives, and deleting
+clear-text files after processing.
+"""
+
 from __future__ import annotations
 
 import hashlib
 import os
 import shutil
 import tempfile
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
 
@@ -13,6 +20,16 @@ from cryptography.fernet import Fernet
 from .errors import FileTooLargeError, TemporaryFileError, UnsupportedFileError
 from .models import PrivacyAction, TemporaryStatement
 
+# ---------------------------------------------------------------------------
+# Module-level constants
+# ---------------------------------------------------------------------------
+
+#: File extensions accepted as statement uploads.
+SUPPORTED_EXTENSIONS: frozenset[str] = frozenset({".csv"})
+
+#: Default maximum file size allowed for import (20 MB).
+DEFAULT_MAX_SIZE_BYTES: int = 20 * 1024 * 1024
+
 
 class TemporaryStatementFileManager:
     def __init__(
@@ -20,7 +37,7 @@ class TemporaryStatementFileManager:
         *,
         temp_root: Path | None = None,
         archive_root: Path | None = None,
-        max_size_bytes: int = 20 * 1024 * 1024,
+        max_size_bytes: int = DEFAULT_MAX_SIZE_BYTES,
         archive_key: bytes | None = None,
     ):
         self.temp_root = temp_root or Path(tempfile.gettempdir()) / "tally-imports"
@@ -29,8 +46,22 @@ class TemporaryStatementFileManager:
         self.archive_key = archive_key or Fernet.generate_key()
 
     def prepare_csv(self, source_path: Path, original_filename: str | None = None) -> TemporaryStatement:
+        """Stage a CSV file in the temp directory and compute its SHA-256.
+
+        Args:
+            source_path: Absolute path to the caller-supplied CSV file.
+            original_filename: Human-readable filename for audit records.
+
+        Returns:
+            ``TemporaryStatement`` describing the staged copy.
+
+        Raises:
+            UnsupportedFileError: Extension is not in SUPPORTED_EXTENSIONS or file is empty.
+            FileTooLargeError: File exceeds *max_size_bytes*.
+            TemporaryFileError: OS-level error while copying.
+        """
         path = Path(source_path)
-        if path.suffix.lower() != ".csv":
+        if path.suffix.lower() not in SUPPORTED_EXTENSIONS:
             raise UnsupportedFileError(technical_detail=f"Unsupported extension: {path.suffix}")
         if not path.exists() or not path.is_file():
             raise UnsupportedFileError(technical_detail="Source path does not exist or is not a file")
@@ -81,9 +112,17 @@ class TemporaryStatementFileManager:
         )
 
     def cleanup_old_temp_files(self, *, older_than: timedelta = timedelta(hours=24)) -> int:
+        """Delete temp files older than *older_than*.
+
+        Args:
+            older_than: Files not accessed within this interval are removed.
+
+        Returns:
+            Number of files deleted.
+        """
         if not self.temp_root.exists():
             return 0
-        cutoff = datetime.now().timestamp() - older_than.total_seconds()
+        cutoff = datetime.now(UTC).timestamp() - older_than.total_seconds()
         deleted = 0
         for candidate in self.temp_root.glob("*"):
             if candidate.is_file() and candidate.stat().st_mtime < cutoff:

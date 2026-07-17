@@ -1,3 +1,9 @@
+"""Services for transactions timeline, management, and analytics dashboard.
+
+Handles transaction querying, pagination, grouping, metadata editing,
+merchant statistics calculation, and financial summary generation.
+"""
+
 from __future__ import annotations
 
 from collections import defaultdict
@@ -30,6 +36,32 @@ from .repository import MerchantRepository, TransactionRepository
 
 ZERO = Decimal("0")
 TWOPLACES = Decimal("0.01")
+TOP_N = 5
+
+
+def _sort_oldest_first_key(tx: Transaction) -> tuple[date, datetime, str]:
+    return tx.posted_date, tx.created_at, tx.id.hex
+
+
+def _sort_newest_first_key(tx: Transaction) -> tuple[date, datetime, str]:
+    return tx.posted_date, tx.created_at, tx.id.hex
+
+
+def _sort_highest_amount_key(tx: Transaction) -> tuple[Decimal, date]:
+    return -tx.amount, tx.posted_date
+
+
+def _sort_lowest_amount_key(tx: Transaction) -> tuple[Decimal, date]:
+    return tx.amount, tx.posted_date
+
+
+def _sort_merchant_key(tx: Transaction) -> tuple[str, Decimal]:
+    return tx.merchant.lower(), -tx.amount
+
+
+def _sort_category_key(tx: Transaction) -> tuple[str, str]:
+    return (tx.category or "").lower(), tx.merchant.lower()
+
 
 
 class TimelineService:
@@ -55,6 +87,8 @@ class TimelineService:
     def _apply_filters(
         self, transactions: tuple[Transaction, ...], filters: TransactionFilters
     ) -> tuple[Transaction, ...]:
+        if filters.is_empty:
+            return transactions
         result: list[Transaction] = []
         for transaction in transactions:
             if filters.from_date and transaction.posted_date < filters.from_date:
@@ -100,17 +134,16 @@ class TimelineService:
 
     def _sort(self, transactions: tuple[Transaction, ...], sort: SortOption) -> tuple[Transaction, ...]:
         if sort == SortOption.OLDEST_FIRST:
-            key = lambda tx: (tx.posted_date, tx.created_at, tx.id.hex)
-            return tuple(sorted(transactions, key=key))
+            return tuple(sorted(transactions, key=_sort_oldest_first_key))
         if sort == SortOption.HIGHEST_AMOUNT:
-            return tuple(sorted(transactions, key=lambda tx: (-tx.amount, tx.posted_date)))
+            return tuple(sorted(transactions, key=_sort_highest_amount_key))
         if sort == SortOption.LOWEST_AMOUNT:
-            return tuple(sorted(transactions, key=lambda tx: (tx.amount, tx.posted_date)))
+            return tuple(sorted(transactions, key=_sort_lowest_amount_key))
         if sort == SortOption.MERCHANT:
-            return tuple(sorted(transactions, key=lambda tx: (tx.merchant.lower(), -tx.amount)))
+            return tuple(sorted(transactions, key=_sort_merchant_key))
         if sort == SortOption.CATEGORY:
-            return tuple(sorted(transactions, key=lambda tx: ((tx.category or "").lower(), tx.merchant.lower())))
-        return tuple(sorted(transactions, key=lambda tx: (tx.posted_date, tx.created_at, tx.id.hex), reverse=True))
+            return tuple(sorted(transactions, key=_sort_category_key))
+        return tuple(sorted(transactions, key=_sort_newest_first_key, reverse=True))
 
     def _group(self, transactions: tuple[Transaction, ...], group_by: GroupBy) -> tuple[TimelineGroup, ...]:
         buckets: dict[str, list[Transaction]] = defaultdict(list)
@@ -167,9 +200,18 @@ class MerchantService:
         by_merchant: dict[str, list[Transaction]] = defaultdict(list)
         for transaction in transactions:
             by_merchant[transaction.merchant].append(transaction)
+        # Performance optimization: pre-load existing merchants to avoid repeated get_or_create lookups
+        existing_merchants = {
+            " ".join(m.name.lower().split()): m
+            for m in self.merchant_repository.list_merchants(user_id=user_id)
+        }
         stats = []
         for merchant_name, items in by_merchant.items():
-            merchant = self.merchant_repository.get_or_create(user_id=user_id, name=merchant_name)
+            key = " ".join(merchant_name.lower().split())
+            merchant = existing_merchants.get(key)
+            if merchant is None:
+                merchant = self.merchant_repository.get_or_create(user_id=user_id, name=merchant_name)
+                existing_merchants[key] = merchant
             stats.append(_merchant_stats(merchant.name, merchant.category, tuple(items)))
         return tuple(sorted(stats, key=lambda item: item.total_spent, reverse=True))
 
@@ -178,11 +220,12 @@ class AnalyticsService:
     def __init__(self, transaction_repository: TransactionRepository, merchant_service: MerchantService):
         self.transaction_repository = transaction_repository
         self.merchant_service = merchant_service
-        self._dashboard_cache: dict[tuple[UUID, int], DashboardAnalytics] = {}
+        self._dashboard_cache: dict[tuple[UUID, int, datetime], DashboardAnalytics] = {}
 
     def dashboard(self, *, user_id: UUID, today: date | None = None) -> DashboardAnalytics:
         transactions = self.transaction_repository.list_transactions(user_id=user_id)
-        cache_key = (user_id, hash(tuple((tx.id, tx.updated_at) for tx in transactions)))
+        max_updated = max((tx.updated_at for tx in transactions), default=datetime.min)
+        cache_key = (user_id, len(transactions), max_updated)
         cached = self._dashboard_cache.get(cache_key)
         if cached is not None:
             return cached
@@ -198,10 +241,10 @@ class AnalyticsService:
             merchant_spending=merchant_stats,
             daily_spending=self.trend(user_id=user_id, period="daily", direction=TransactionDirection.DEBIT),
             weekly_spending=self.trend(user_id=user_id, period="weekly", direction=TransactionDirection.DEBIT),
-            top_categories=category_stats[:5],
-            top_merchants=merchant_stats[:5],
-            largest_expenses=self.largest(user_id=user_id, direction=TransactionDirection.DEBIT, limit=5),
-            largest_income=self.largest(user_id=user_id, direction=TransactionDirection.CREDIT, limit=5),
+            top_categories=category_stats[:TOP_N],
+            top_merchants=merchant_stats[:TOP_N],
+            largest_expenses=self.largest(user_id=user_id, direction=TransactionDirection.DEBIT, limit=TOP_N),
+            largest_income=self.largest(user_id=user_id, direction=TransactionDirection.CREDIT, limit=TOP_N),
         )
         self._dashboard_cache.clear()
         self._dashboard_cache[cache_key] = dashboard

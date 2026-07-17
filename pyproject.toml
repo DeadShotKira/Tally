@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tally-finance-core"
+version = "0.5.0"
+description = "Privacy-first bank statement import and personal-finance domain services."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "cryptography>=42,<46",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8,<10",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["backend/tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+markers = [
+  "performance: bounded performance checks that may be excluded during quick development runs",
+]
+
+[tool.setuptools.packages.find]
+include = ["backend*"]

@@ -110,7 +110,7 @@ class CategorizationService:
             CategorizationResult with category and confidence
         """
         self.logger.info(
-            f"Categorizing transaction {transaction.id}: {transaction.merchant}"
+            f"Categorizing transaction {transaction.id}"
         )
 
         # Step 1: Check rules
@@ -119,7 +119,7 @@ class CategorizationService:
             if rule_match:
                 category = rule_match.action.get("category")
                 if category:
-                    self.logger.info(f"Rule matched: {rule_match.rule_name}")
+                    self.logger.info(f"Rule matched for transaction {transaction.id}")
                     return CategorizationResult(
                         category=category,
                         confidence=1.0,
@@ -135,7 +135,7 @@ class CategorizationService:
         )
         if memory_match and memory_match.category:
             self.logger.info(
-                f"Merchant memory matched: {memory_match.canonical}"
+                f"Merchant memory matched for transaction {transaction.id}"
             )
             return CategorizationResult(
                 category=memory_match.category,
