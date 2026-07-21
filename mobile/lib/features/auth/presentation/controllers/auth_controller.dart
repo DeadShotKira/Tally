@@ -8,11 +8,13 @@ class AuthControllerState {
   final AuthStatus status;
   final AuthSession? session;
   final String? errorMessage;
+  final String? noticeMessage;
 
   const AuthControllerState({
     required this.status,
     this.session,
     this.errorMessage,
+    this.noticeMessage,
   });
 
   factory AuthControllerState.initial() =>
@@ -29,6 +31,9 @@ class AuthControllerState {
 
   factory AuthControllerState.error(String message) =>
       AuthControllerState(status: AuthStatus.error, errorMessage: message);
+
+  factory AuthControllerState.notice(String message) =>
+      AuthControllerState(status: AuthStatus.unauthenticated, noticeMessage: message);
 
   bool get isInitial => status == AuthStatus.initial;
   bool get isLoading => status == AuthStatus.loading;
@@ -82,9 +87,15 @@ class AuthController extends StateNotifier<AuthControllerState> {
   Future<void> register(String email, String password) async {
     state = AuthControllerState.loading();
     try {
-      await _authRepository.signUp(email: email, password: password);
-      // Supabase email verification might be active. Prompt to check email or automatically log in.
-      state = AuthControllerState.error('Sign up successful! Please check your email for verification.');
+      final session = await _authRepository.signUp(email: email, password: password);
+      if (session != null) {
+        state = AuthControllerState.authenticated(session);
+      } else {
+        // Email confirmation is enabled; the Supabase link will resume the app.
+        state = AuthControllerState.notice(
+          'Account created. Check your email to verify your address.',
+        );
+      }
     } catch (e) {
       state = AuthControllerState.error(_cleanErrorMessage(e));
     }
@@ -95,7 +106,9 @@ class AuthController extends StateNotifier<AuthControllerState> {
     state = AuthControllerState.loading();
     try {
       await _authRepository.sendPasswordResetEmail(email);
-      state = AuthControllerState.error('Password reset email sent. Please check your inbox.');
+      state = AuthControllerState.notice(
+        'Password reset email sent. Check your inbox for the recovery link.',
+      );
     } catch (e) {
       state = AuthControllerState.error(_cleanErrorMessage(e));
     }

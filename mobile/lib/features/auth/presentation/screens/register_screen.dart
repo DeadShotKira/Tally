@@ -47,14 +47,13 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
     // Listen to register status updates
     ref.listen<AuthControllerState>(authControllerProvider, (previous, next) {
-      if (next.isError && next.errorMessage != null) {
-        // Display validation banner or email verification alert
-        final isSuccessInfo = next.errorMessage!.contains('verification') || 
-                            next.errorMessage!.contains('successful');
+      final message = next.errorMessage ?? next.noticeMessage;
+      if (message != null && (next.isError || next.noticeMessage != null)) {
+        final isSuccessInfo = next.noticeMessage != null;
         
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(next.errorMessage!),
+            content: Text(message),
             backgroundColor: isSuccessInfo ? AppColors.success : AppColors.error,
             behavior: SnackBarBehavior.floating,
             duration: Duration(seconds: isSuccessInfo ? 6 : 4),
